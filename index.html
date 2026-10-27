@@ -1,0 +1,154 @@
+
+<!DOCTYPE html>
+<html lang="bn">
+<head<link rel="manifest" href="./manifest.json">>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<title>My Note Pad</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;background:#f1f5f9;color:#172033}
+header{background:#2563eb;color:white;padding:18px;text-align:center}
+main{max-width:700px;margin:auto;padding:15px}
+.card{background:white;padding:16px;border-radius:12px;margin:12px 0;box-shadow:0 2px 8px #0001}
+input,textarea,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #cbd5e1;width:100%;margin:5px 0}
+textarea{min-height:150px;resize:vertical}
+button{background:#2563eb;color:white;border:0;cursor:pointer}
+button.secondary{background:#475569}
+button.danger{background:#dc2626}
+.actions{display:flex;gap:7px}
+.actions button{flex:1}
+.note{border:1px solid #dbeafe;padding:12px;border-radius:9px;margin:10px 0;overflow-wrap:anywhere}
+.note h3{margin:4px 0}
+.small{font-size:12px;color:#64748b}
+#app{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h2>📝 My Note Pad</h2>
+  <button id="langBtn" style="max-width:130px;background:#1e40af" onclick="toggleLang()">English</button>
+</header>
+
+<main>
+<section id="lock" class="card">
+  <h3 id="lockTitle">PIN দিয়ে খুলুন</h3>
+  <input id="pin" type="password" inputmode="numeric" maxlength="12" placeholder="PIN লিখুন">
+  <button onclick="unlock()" id="unlockBtn">খুলুন / PIN সেট করুন</button>
+  <p class="small" id="lockHelp">প্রথমবার একটি PIN সেট করুন।</p>
+</section>
+
+<section id="app">
+  <div class="card">
+    <h3 id="editorTitle">নতুন নোট</h3>
+    <input id="title" placeholder="নোটের শিরোনাম">
+    <textarea id="body" placeholder="আপনার নোট লিখুন..."></textarea>
+    <button onclick="saveNote()" id="saveBtn">নোট সেভ করুন</button>
+    <button class="secondary" onclick="clearForm()" id="newBtn">নতুন নোট</button>
+  </div>
+
+  <div class="card">
+    <input id="search" placeholder="নোট খুঁজুন..." oninput="renderNotes()">
+    <div class="actions">
+      <button onclick="exportNotes()" id="backupBtn">Backup</button>
+      <button class="secondary" onclick="document.getElementById('restore').click()" id="restoreBtn">Restore</button>
+      <input type="file" id="restore" accept=".json,application/json" hidden onchange="restoreNotes(event)">
+    </div>
+    <button class="secondary" onclick="changePin()" id="pinBtn">PIN পরিবর্তন</button>
+    <button class="danger" onclick="lockApp()" id="lockBtn">লক করুন</button>
+  </div>
+
+  <div class="card">
+    <h3 id="listTitle">আমার নোট</h3>
+    <div id="notes"></div>
+  </div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let notes=[], editing=null, english=false;
+const texts={
+bn:{lock:"PIN দিয়ে খুলুন",unlock:"খুলুন / PIN সেট করুন",help:"প্রথমবার একটি PIN সেট করুন।",title:"নতুন নোট",heading:"নোটের শিরোনাম",content:"আপনার নোট লিখুন...",save:"নোট সেভ করুন",fresh:"নতুন নোট",search:"নোট খুঁজুন...",list:"আমার নোট",edit:"এডিট",del:"ডিলিট",backup:"ব্যাকআপ নিন",restore:"ব্যাকআপ ফেরত",pin:"PIN পরিবর্তন",lockBtn:"লক করুন",empty:"কোনো নোট পাওয়া যায়নি",ask:"নোটটি মুছে ফেলবেন?",saved:"নোট সেভ হয়েছে",bad:"ভুল PIN",need:"শিরোনাম ও নোট লিখুন",changed:"PIN পরিবর্তন হয়েছে",restored:"ব্যাকআপ ফেরত এসেছে",invalid:"ব্যাকআপ ফাইল সঠিক নয়"},
+en:{lock:"Unlock with PIN",unlock:"Unlock / Set PIN",help:"Set a PIN the first time.",title:"New Note",heading:"Note title",content:"Write your note...",save:"Save Note",fresh:"New Note",search:"Search notes...",list:"My Notes",edit:"Edit",del:"Delete",backup:"Backup",restore:"Restore",pin:"Change PIN",lockBtn:"Lock",empty:"No notes found",ask:"Delete this note?",saved:"Note saved",bad:"Incorrect PIN",need:"Enter a title and note",changed:"PIN changed",restored:"Backup restored",invalid:"Invalid backup file"}
+};
+function t(k){return texts[english?"en":"bn"][k]}
+function load(){try{notes=JSON.parse(localStorage.getItem("mnp_notes")||"[]");if(!Array.isArray(notes))notes=[]}catch(e){notes=[]}}
+function store(){localStorage.setItem("mnp_notes",JSON.stringify(notes))}
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(16)}
+function unlock(){
+ const p=$("pin").value;
+ if(!p)return alert(t("bad"));
+ const saved=localStorage.getItem("mnp_pin");
+ if(!saved){localStorage.setItem("mnp_pin",hash(p))}
+ else if(saved!==hash(p)){alert(t("bad"));return}
+ $("lock").style.display="none";$("app").style.display="block";
+ $("pin").value="";load();renderNotes();
+}
+function lockApp(){$("app").style.display="none";$("lock").style.display="block";clearForm()}
+function saveNote(){
+ const title=$("title").value.trim(),body=$("body").value.trim();
+ if(!title||!body)return alert(t("need"));
+ if(editing!==null){let n=notes.find(n=>n.id===editing);if(n){n.title=title;n.body=body;n.updated=Date.now()}}
+ else notes.unshift({id:Date.now().toString()+Math.random().toString(16).slice(2),title,body,updated:Date.now()});
+ store();clearForm();renderNotes();alert(t("saved"));
+}
+function clearForm(){editing=null;$("title").value="";$("body").value="";$("editorTitle").textContent=t("title");$("saveBtn").textContent=t("save")}
+function editNote(id){const n=notes.find(n=>n.id===id);if(!n)return;editing=id;$("title").value=n.title;$("body").value=n.body;$("editorTitle").textContent=t("edit");$("saveBtn").textContent=t("save");window.scrollTo({top:0,behavior:"smooth"})}
+function deleteNote(id){if(!confirm(t("ask")))return;notes=notes.filter(n=>n.id!==id);store();renderNotes()}
+function renderNotes(){
+ const q=$("search").value.toLowerCase();
+ const filtered=notes.filter(n=>(n.title+" "+n.body).toLowerCase().includes(q));
+ $("notes").innerHTML="";
+ if(!filtered.length){$("notes").textContent=t("empty");return}
+ filtered.forEach(n=>{
+  const div=document.createElement("div");div.className="note";
+  const h=document.createElement("h3");h.textContent=n.title;
+  const p=document.createElement("p");p.style.whiteSpace="pre-wrap";p.textContent=n.body;
+  const d=document.createElement("div");d.className="small";d.textContent=new Date(n.updated).toLocaleString();
+  const row=document.createElement("div");row.className="actions";
+  const e=document.createElement("button");e.textContent=t("edit");e.onclick=()=>editNote(n.id);
+  const del=document.createElement("button");del.className="danger";del.textContent=t("del");del.onclick=()=>deleteNote(n.id);
+  row.append(e,del);div.append(h,p,d,row);$("notes").append(div);
+ });
+}
+function exportNotes(){
+ const blob=new Blob([JSON.stringify(notes,null,2)],{type:"application/json"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="my-notes-backup.json";a.click();URL.revokeObjectURL(a.href);
+}
+function restoreNotes(e){
+ const f=e.target.files[0];if(!f)return;
+ const r=new FileReader();r.onload=()=>{
+ try{const data=JSON.parse(r.result);if(!Array.isArray(data)||!data.every(n=>n.title&&n.body&&n.id))throw Error();
+ notes=data;store();renderNotes();alert(t("restored"));
+ }catch(err){alert(t("invalid"))}
+ e.target.value="";
+ };r.readAsText(f);
+}
+function changePin(){
+ const old=prompt(english?"Enter current PIN":"বর্তমান PIN লিখুন");if(old===null)return;
+ if(localStorage.getItem("mnp_pin")!==hash(old)){alert(t("bad"));return}
+ const next=prompt(english?"Enter new PIN":"নতুন PIN লিখুন");if(!next)return;
+ localStorage.setItem("mnp_pin",hash(next));alert(t("changed"));
+}
+function toggleLang(){
+ english=!english;
+ $("langBtn").textContent=english?"বাংলা":"English";
+ $("lockTitle").textContent=t("lock");$("unlockBtn").textContent=t("unlock");$("lockHelp").textContent=t("help");
+ $("editorTitle").textContent=t("title");$("title").placeholder=t("heading");$("body").placeholder=t("content");
+ $("saveBtn").textContent=t("save");$("newBtn").textContent=t("fresh");$("search").placeholder=t("search");
+ $("listTitle").textContent=t("list");$("backupBtn").textContent=t("backup");$("restoreBtn").textContent=t("restore");
+ $("pinBtn").textContent=t("pin");$("lockBtn").textContent=t("lockBtn");renderNotes();
+}
+</script>
+  <script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js")
+      .catch(error => console.error("Offline setup failed:", error));
+  });
+}
+  </script>
+</body>
+</html>
